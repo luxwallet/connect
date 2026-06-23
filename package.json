@@ -10,7 +10,14 @@
   "exports": {
     ".": "./src/index.ts",
     "./verify": "./src/verify.ts",
-    "./caip122": "./src/caip122.ts"
+    "./caip122": "./src/caip122.ts",
+    "./connectors": "./src/connectors.ts",
+    "./login": "./src/login.ts",
+    "./evm/connect": "./src/evm/connect.ts",
+    "./solana/connect": "./src/solana/connect.ts",
+    "./bitcoin/connect": "./src/bitcoin/connect.ts",
+    "./ton/connect": "./src/ton/connect.ts",
+    "./xrp/connect": "./src/xrp/connect.ts"
   },
   "files": [
     "dist",
@@ -28,9 +35,33 @@
     "@noble/hashes": "^1.5.0",
     "bs58": "^6.0.0"
   },
+  "peerDependencies": {
+    "@crossmarkio/sdk": "^0.4.0",
+    "@tonconnect/sdk": "^4.0.0",
+    "sats-connect": "^4.2.1",
+    "viem": "^2.53.1"
+  },
+  "peerDependenciesMeta": {
+    "viem": {
+      "optional": true
+    },
+    "sats-connect": {
+      "optional": true
+    },
+    "@tonconnect/sdk": {
+      "optional": true
+    },
+    "@crossmarkio/sdk": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@crossmarkio/sdk": "^0.4.0",
+    "@tonconnect/sdk": "^4.0.0",
     "@types/node": "^26.0.0",
+    "sats-connect": "^4.2.1",
     "typescript": "^5.6.0",
+    "viem": "^2.53.1",
     "vitest": "^2.1.0"
   },
   "repository": {

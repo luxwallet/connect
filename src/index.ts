@@ -33,3 +33,19 @@ export { verifySolana } from './solana/verify.js';
 export { verifyTon } from './ton/verify.js';
 export { verifyBitcoin } from './bitcoin/verify.js';
 export { verifyXrp } from './xrp/verify.js';
+
+// Browser wallet connectors + the high-level login flow. These import the
+// wallet libraries (viem, sats-connect, @tonconnect/sdk, @crossmarkio/sdk);
+// the server verify path above pulls NONE of them.
+export {
+  getConnector,
+  allConnectors,
+  EvmConnector,
+  SolanaConnector,
+  BitcoinConnector,
+  TonConnector,
+  XrpConnector,
+} from './connectors.js';
+export type { ConnectorOptions, TonConnectorOptions } from './connectors.js';
+export { loginWithWallet } from './login.js';
+export type { LoginWithWalletParams, LoginResult } from './login.js';

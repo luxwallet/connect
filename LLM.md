@@ -38,15 +38,52 @@ src/
   nonce.ts        — generateNonce / newChallenge
   verify.ts       — verifyProof(proof, expected) dispatcher (pure)
   bytes.ts        — hex/base64/utf8 helpers (cross-runtime)
-  evm/verify.ts   — EIP-191 secp256k1 recover  [DONE, tested]
-  solana/verify.ts— ed25519 over message       [DONE, tested]
-  bitcoin/        — legacy + BIP-322 simple     [DONE, tested]
-  ton/            — ton_proof (ed25519)         [DONE, tested]
-  xrp/            — secp256k1 + ed25519         [DONE, tested]
-  __tests__/      — vitest; verifiers run against generated keypairs
+  evm/{verify,connect}.ts    — EIP-191 recover [verify] + viem/EIP-6963 [connect]
+  solana/{verify,connect}.ts — ed25519 [verify] + injected provider [connect]
+  bitcoin/{verify,connect}.ts— legacy+BIP-322 [verify] + sats-connect [connect]
+  ton/{verify,connect}.ts    — ton_proof [verify] + @tonconnect/sdk [connect]
+  xrp/{verify,connect}.ts    — secp256k1+ed25519 [verify] + @crossmarkio/sdk [connect]
+  connectors.ts   — getConnector(chain) factory + allConnectors() barrel
+  login.ts        — loginWithWallet({chain, challenge}) — connect→signLogin→SignedProof
+  __tests__/      — vitest; verifiers + EVM/Solana connector round-trips (mocked providers)
 go/walletconnect/ — Go port of verifyProof for IAM  [DONE, 67 tests]
 integrations/iam/ — IAM apply plan + drafts         [planned]
 ```
+
+## Connectors (browser side) — DONE 2026-06-23
+
+Each `src/<chain>/connect.ts` exports a class implementing `WalletConnector`
+(`chain`, `available()`, `connect(walletId?)`, `signLogin(account, challenge)`,
+`disconnect()`) producing a `SignedProof` the matching verifier accepts:
+
+- **EVM** — `viem` (MIT). EIP-6963 multi-injection discovery, falls back to
+  `window.ethereum`. `personal_sign` → `secp256k1-eip191`.
+- **Solana** — injected provider (Phantom/Solflare/Backpack), no lib.
+  `signMessage(utf8)` → base64 `ed25519`; address = base58 pubkey.
+- **Bitcoin** — `sats-connect` (MIT). Prefers P2WPKH; `signMessage` BIP-322 →
+  base64; scheme `bip322` + `extra.addressType` (verifier dispatches by shape).
+- **TON** — `@tonconnect/sdk` (Apache-2.0). Lazy-inits the SDK (its ctor touches
+  `localStorage`, so `getConnector('ton')` stays pure). `signLogin` re-runs the
+  connect handshake with `tonProof: nonce`, builds
+  `extra={timestamp,domain,payload,workchain,addressHashHex}`, publicKey hex,
+  base64 sig, scheme `ton-proof`. Raw address `<wc>:<hex>` → workchain + hash.
+- **XRP** — `@crossmarkio/sdk` (MIT). `signInAndWait(hex(utf8(message)))` →
+  `{address, publicKey, signature}`; scheme from the key's family tag
+  (`0xED`→`ed25519-xrpl`, else `secp256k1-xrpl`).
+
+**GemWallet NOT wired**: `@gemwallet/api` is a custom dual license (permission
+required for public/commercial use), violating the MIT/Apache/ISC-only rule. Its
+only non-package path is a hand-rolled `postMessage` protocol (would be slop).
+Crossmark covers both XRPL key types, so XRP is complete.
+
+**Architecture rule enforced & verified**: wallet libs are OPTIONAL peer deps
+(`peerDependenciesMeta.*.optional`). The `./verify` + `./caip122` entrypoints
+import ONLY `@noble/*` + `bs58` — proven three ways (source graph, runtime
+require-hook, built `dist/verify.js` graph: 0 wallet-lib leaks). Connectors sit
+behind `./connectors`, `./login`, and per-chain `./<chain>/connect` exports.
+
+dual-license note: one transitive dep, `node-forge` (via @crossmarkio/typings),
+is `(BSD-3-Clause OR GPL-2.0)` — we elect BSD-3-Clause. No GPL obligation.
 
 ## Status (2026-06-22)
 
@@ -58,9 +95,11 @@ integrations/iam/ — IAM apply plan + drafts         [planned]
   - Go (`go/walletconnect`): same 5, mirrored 1:1, reasons match. EVM via
     `github.com/luxfi/crypto` (no go-ethereum/ava-labs). Bitcoin BIP-340
     implemented inline (dcrd's schnorr is DCRv0, not BIP-340).
-- Connectors (browser wallet interaction): **TODO** — needs the real wallet
-  libs (viem/wagmi, @solana/wallet-adapter, @tonconnect/ui, sats-connect,
-  gemwallet — all MIT/Apache). Not unit-testable; build on the verifiers.
+- Connectors (browser wallet interaction): **DONE 2026-06-23** — see the
+  "Connectors" section below. viem / sats-connect / @tonconnect/sdk /
+  @crossmarkio/sdk (all MIT/Apache). EVM + Solana have mocked-provider
+  round-trip tests through verifyProof; BTC/TON/XRP need a real wallet to
+  exercise end-to-end (their crypto is covered by the verifier round-trips).
 - IAM apply: **planned** in `integrations/iam/` (PLAN.md + drafts). Needs the Go
   module published + `replace` dropped, then `/v1/iam/web3/{nonce,verify}` +
   nonce store + WalletLink table wired, `@web3-onboard` + dead idp removed.

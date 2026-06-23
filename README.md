@@ -27,15 +27,36 @@ connect(chain) ─► Account ─► signLogin(challenge) ─► SignedProof ─
 
 ## Chain support
 
-| Chain | Connect lib | Login proof | Verifier |
-|-------|-------------|-------------|----------|
-| EVM | viem/wagmi + WalletConnect | EIP-191 `personal_sign` | ✅ secp256k1 recover |
-| Solana | `@solana/wallet-adapter` | ed25519 `signMessage` | ✅ ed25519 |
-| Bitcoin | `sats-connect` (Xverse/Leather/Unisat) | BIP-322 | ⏳ in progress |
-| TON | `@tonconnect/ui` | `ton_proof` | ⏳ in progress |
-| XRP | GemWallet / Crossmark / Xaman | `signMessage` | ⏳ in progress |
+| Chain | Connect lib (license) | Login proof | Connector | Verifier |
+|-------|-----------------------|-------------|-----------|----------|
+| EVM | `viem` (MIT) — EIP-6963 / `window.ethereum` | EIP-191 `personal_sign` | ✅ `evm/connect.ts` | ✅ secp256k1 recover |
+| Solana | injected provider (Phantom/Solflare/Backpack) | ed25519 `signMessage` | ✅ `solana/connect.ts` | ✅ ed25519 |
+| Bitcoin | `sats-connect` (MIT) — Xverse/Leather/Unisat | BIP-322 | ✅ `bitcoin/connect.ts` | ✅ legacy + BIP-322 |
+| TON | `@tonconnect/sdk` (Apache-2.0) | `ton_proof` | ✅ `ton/connect.ts` | ✅ ed25519 envelope |
+| XRP | `@crossmarkio/sdk` (MIT) — Crossmark | `signInAndWait` | ✅ `xrp/connect.ts` | ✅ secp256k1 + ed25519 |
 
-All connect libs are MIT/Apache — no GPL anywhere in the dependency tree.
+All connect libs are MIT/Apache/ISC — **no GPL anywhere** in the dependency tree.
+GemWallet is intentionally not wired: its only client, `@gemwallet/api`, ships
+under a custom dual license requiring GemWallet's permission for public/commercial
+use — incompatible with the MIT/Apache/ISC-only rule. Crossmark covers both XRPL
+key types, so the XRP path is complete without it.
+
+### Architecture: server verify never pulls a wallet lib
+
+The wallet libraries are **optional peer dependencies**. The server-side
+`verifyProof` path imports only `@noble/*` + `bs58`:
+
+```ts
+import { verifyProof } from '@luxwallet/connect/verify';     // zero wallet libs
+import { buildSiwxMessage } from '@luxwallet/connect/caip122'; // zero deps
+```
+
+Connectors live behind separate entrypoints, so a server bundle stays clean:
+
+```ts
+import { loginWithWallet, getConnector } from '@luxwallet/connect/connectors';
+import { EvmConnector } from '@luxwallet/connect/evm/connect';
+```
 
 ## Use
 
@@ -48,6 +69,20 @@ const challenge = newChallenge({ domain: 'hanzo.id', uri: 'https://hanzo.id/logi
 // Server: verify what comes back
 const res = verifyProof(proof, { domain: 'hanzo.id', nonce: challenge.nonce });
 if (res.ok) { /* res.address is authenticated on res.chain */ }
+```
+
+```ts
+// Client (browser): connect a wallet and sign the challenge in one call.
+import { loginWithWallet } from '@luxwallet/connect/connectors';
+
+const { account, proof } = await loginWithWallet({ chain: 'evm', challenge });
+// → POST `proof` to the server, which calls verifyProof(proof, { domain, nonce }).
+
+// Or drive a connector directly:
+import { getConnector } from '@luxwallet/connect/connectors';
+const c = getConnector('solana');
+const acct = await c.connect();             // provider.connect()
+const p = await c.signLogin(acct, challenge); // ed25519 signMessage → SignedProof
 ```
 
 ## Develop
