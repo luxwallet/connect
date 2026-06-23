@@ -12,7 +12,10 @@
     "./verify": "./src/verify.ts",
     "./caip122": "./src/caip122.ts"
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
@@ -26,6 +29,7 @@
     "bs58": "^6.0.0"
   },
   "devDependencies": {
+    "@types/node": "^26.0.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   },
