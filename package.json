@@ -1,0 +1,39 @@
+{
+  "name": "@luxwallet/connect",
+  "version": "0.1.0",
+  "description": "Multi-chain wallet connect + Sign-In-With-X (CAIP-122) for EVM, Solana, Bitcoin, TON, XRP. MIT, zero GPL.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./verify": "./src/verify.ts",
+    "./caip122": "./src/caip122.ts"
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.5.0",
+    "bs58": "^6.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luxwallet/wallet-connect.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
