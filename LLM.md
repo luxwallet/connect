@@ -40,21 +40,34 @@ src/
   bytes.ts        — hex/base64/utf8 helpers (cross-runtime)
   evm/verify.ts   — EIP-191 secp256k1 recover  [DONE, tested]
   solana/verify.ts— ed25519 over message       [DONE, tested]
-  bitcoin/        — BIP-322                     [TODO]
-  ton/            — ton_proof (ed25519)         [TODO]
-  xrp/            — signMessage                 [TODO]
+  bitcoin/        — legacy + BIP-322 simple     [DONE, tested]
+  ton/            — ton_proof (ed25519)         [DONE, tested]
+  xrp/            — secp256k1 + ed25519         [DONE, tested]
   __tests__/      — vitest; verifiers run against generated keypairs
-go/walletconnect/ — Go port of verifyProof for IAM  [TODO]
+go/walletconnect/ — Go port of verifyProof for IAM  [DONE, 67 tests]
+integrations/iam/ — IAM apply plan + drafts         [planned]
 ```
 
 ## Status (2026-06-22)
 
-- Core + EVM + Solana verifiers: **DONE, 17 tests green** (`pnpm test`).
-- Connectors (browser wallet interaction): **TODO** — build on the verifiers.
-- Bitcoin (BIP-322) / TON (ton_proof) / XRP verifiers: **TODO** — `verifyProof`
-  fails closed (`reason:'unsupported-scheme'`) until each lands.
-- Go port for IAM: **TODO**.
-- IAM wiring (frontend connectors + `/v1/iam/web3/*` verify against this): **TODO**.
+- **Verifier core COMPLETE — all 5 chains, both sides. 128 tests green**
+  (61 TS via `pnpm test`, 67 Go via `cd go && CGO_ENABLED=0 go test ./...`).
+  - TS: EVM (EIP-191), Solana (ed25519), TON (ton_proof), XRP (secp256k1
+    sha512half + ed25519, AccountID r-addr), Bitcoin (legacy recoverable ECDSA
+    + BIP-322 simple P2WPKH/P2TR). All anchored to KAT vectors where they exist.
+  - Go (`go/walletconnect`): same 5, mirrored 1:1, reasons match. EVM via
+    `github.com/luxfi/crypto` (no go-ethereum/ava-labs). Bitcoin BIP-340
+    implemented inline (dcrd's schnorr is DCRv0, not BIP-340).
+- Connectors (browser wallet interaction): **TODO** — needs the real wallet
+  libs (viem/wagmi, @solana/wallet-adapter, @tonconnect/ui, sats-connect,
+  gemwallet — all MIT/Apache). Not unit-testable; build on the verifiers.
+- IAM apply: **planned** in `integrations/iam/` (PLAN.md + drafts). Needs the Go
+  module published + `replace` dropped, then `/v1/iam/web3/{nonce,verify}` +
+  nonce store + WalletLink table wired, `@web3-onboard` + dead idp removed.
+  NB: current IAM web3 login verifies NO signature (security hole this closes).
+- Mobile (`luxwallet/unstoppable-wallet-{android,ios}`): forked + rebranded to
+  "Lux Wallet"/`network.lux.wallet` on `lux-rebrand` branches. XRP needs a
+  MarketKit fork + new `ripple-kit` libs (no upstream HS kit).
 
 ## Consumers (the wallet product line, all under `luxwallet`)
 
