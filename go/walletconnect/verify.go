@@ -10,12 +10,15 @@ import (
 type SignatureScheme string
 
 const (
-	SchemeSecp256k1EIP191 SignatureScheme = "secp256k1-eip191" // EVM personal_sign (EIP-191)
-	SchemeEd25519         SignatureScheme = "ed25519"          // Solana, TON
-	SchemeBIP322          SignatureScheme = "bip322"           // Bitcoin message signing (BIP-322)
-	SchemeTonProof        SignatureScheme = "ton-proof"        // TON Connect ton_proof (ed25519 inside)
-	SchemeSecp256k1XRPL   SignatureScheme = "secp256k1-xrpl"   // XRPL signMessage (secp256k1)
-	SchemeEd25519XRPL     SignatureScheme = "ed25519-xrpl"     // XRPL ed25519 keypair
+	SchemeSecp256k1EIP191 SignatureScheme = "secp256k1-eip191"  // EVM personal_sign (EIP-191)
+	SchemeEd25519         SignatureScheme = "ed25519"           // Solana, TON
+	SchemeBIP322          SignatureScheme = "bip322"            // Bitcoin message signing (BIP-322)
+	SchemeTonProof        SignatureScheme = "ton-proof"         // TON Connect ton_proof (ed25519 inside)
+	SchemeSecp256k1XRPL   SignatureScheme = "secp256k1-xrpl"    // XRPL signMessage (secp256k1)
+	SchemeEd25519XRPL     SignatureScheme = "ed25519-xrpl"      // XRPL ed25519 keypair
+	SchemeSr25519         SignatureScheme = "sr25519"           // Polkadot/Substrate default (Schnorrkel/Ristretto255)
+	SchemeEd25519Substr   SignatureScheme = "ed25519-substrate" // Polkadot/Substrate ed25519 accounts
+	SchemeEcdsaSubstr     SignatureScheme = "ecdsa-substrate"   // Polkadot/Substrate ecdsa (secp256k1) accounts
 )
 
 // Proof is what a wallet hands back after signing — everything the server needs
@@ -115,6 +118,8 @@ func crypto(p Proof) (ok, supported bool) {
 		return VerifyBitcoin(p), true
 	case SchemeSecp256k1XRPL, SchemeEd25519XRPL:
 		return VerifyXrp(p), true
+	case SchemeSr25519, SchemeEd25519Substr, SchemeEcdsaSubstr:
+		return VerifyPolkadot(p), true
 	default:
 		return false, false
 	}

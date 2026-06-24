@@ -17,21 +17,23 @@ import (
 type Chain string
 
 const (
-	ChainEVM     Chain = "evm"
-	ChainSolana  Chain = "solana"
-	ChainBitcoin Chain = "bitcoin"
-	ChainTON     Chain = "ton"
-	ChainXRP     Chain = "xrp"
+	ChainEVM      Chain = "evm"
+	ChainSolana   Chain = "solana"
+	ChainBitcoin  Chain = "bitcoin"
+	ChainTON      Chain = "ton"
+	ChainXRP      Chain = "xrp"
+	ChainPolkadot Chain = "polkadot"
 )
 
 // chainLabel is the human chain label used on the first line of the message.
 // Mirrors the TS CHAIN_LABEL record exactly.
 var chainLabel = map[Chain]string{
-	ChainEVM:     "Ethereum",
-	ChainSolana:  "Solana",
-	ChainBitcoin: "Bitcoin",
-	ChainTON:     "TON",
-	ChainXRP:     "XRP Ledger",
+	ChainEVM:      "Ethereum",
+	ChainSolana:   "Solana",
+	ChainBitcoin:  "Bitcoin",
+	ChainTON:      "TON",
+	ChainXRP:      "XRP Ledger",
+	ChainPolkadot: "Polkadot",
 }
 
 // ParsedSiwx is the result of parsing a CAIP-122 message. Optional fields use

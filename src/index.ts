@@ -25,7 +25,7 @@ export type { ParsedSiwx, BuildParams } from './caip122.js';
 
 export { generateNonce, newChallenge } from './nonce.js';
 
-export { verifyProof } from './verify.js';
+export { verifyProof, verifyProofAsync } from './verify.js';
 
 // Per-chain primitives (useful standalone; the connectors build on them).
 export { verifyEvm, recoverEvmAddress, eip191Digest } from './evm/verify.js';
@@ -33,6 +33,8 @@ export { verifySolana } from './solana/verify.js';
 export { verifyTon } from './ton/verify.js';
 export { verifyBitcoin } from './bitcoin/verify.js';
 export { verifyXrp } from './xrp/verify.js';
+// Polkadot/Substrate is async (sr25519 needs cryptoWaitReady); see ./polkadot/verify.
+export { verifyPolkadot } from './polkadot/verify.js';
 
 // Browser wallet connectors + the high-level login flow. These import the
 // wallet libraries (viem, sats-connect, @tonconnect/sdk, @crossmarkio/sdk);
@@ -45,6 +47,7 @@ export {
   BitcoinConnector,
   TonConnector,
   XrpConnector,
+  PolkadotConnector,
 } from './connectors.js';
 export type { ConnectorOptions, TonConnectorOptions } from './connectors.js';
 export { loginWithWallet } from './login.js';

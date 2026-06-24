@@ -6,6 +6,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/luxfi/crypto v1.19.21
 	github.com/mr-tron/base58 v1.3.0
+	github.com/oasisprotocol/curve25519-voi v0.0.0-20251114093237-2ab5a27a1729
 	golang.org/x/crypto v0.53.0
 )
 

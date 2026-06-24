@@ -6,6 +6,13 @@
  *
  * This pure function is mirrored by the Go port in go/walletconnect so IAM
  * verifies identically.
+ *
+ * Two entry points, same checks:
+ *   - {@link verifyProof}      — synchronous, covers the five @noble-pure
+ *     chains (evm/solana/bitcoin/ton/xrp). Pulls no WASM.
+ *   - {@link verifyProofAsync} — covers ALL chains including Polkadot, whose
+ *     sr25519 verify needs `cryptoWaitReady()`. It delegates the five sync
+ *     chains to the same code and awaits the Substrate verifier for the rest.
  */
 import type { SignedProof, VerifyExpectation, VerifyResult, Chain } from './types.js';
 import { parseSiwxMessage } from './caip122.js';
@@ -34,7 +41,8 @@ function parseTime(s: string | undefined): number | null {
   return Number.isNaN(t) ? null : t;
 }
 
-/** Cryptographic dispatch. Returns null for not-yet-supported schemes. */
+/** Synchronous cryptographic dispatch. Returns null for schemes this path does
+ * not handle (Substrate, which needs the async verifier). */
 function verifyCrypto(proof: SignedProof): boolean | null {
   switch (proof.scheme) {
     case 'secp256k1-eip191':
@@ -54,7 +62,13 @@ function verifyCrypto(proof: SignedProof): boolean | null {
   }
 }
 
-export function verifyProof(proof: SignedProof, expected: VerifyExpectation): VerifyResult {
+/**
+ * Run every check up to (but excluding) the cryptographic one. Returns the
+ * failing {@link VerifyResult} when a binding/time check fails, or `null` when
+ * all of them pass (so the caller proceeds to crypto). Shared by both the sync
+ * and async entry points so the order and reasons are identical.
+ */
+function preCrypto(proof: SignedProof, expected: VerifyExpectation): VerifyResult | null {
   let parsed;
   try {
     parsed = parseSiwxMessage(proof.message);
@@ -94,14 +108,56 @@ export function verifyProof(proof: SignedProof, expected: VerifyExpectation): Ve
     return fail('not-yet-valid');
   }
 
-  // 4. Cryptographic signature.
+  return null;
+}
+
+/** Map a crypto result (`true`/`false`) to the final {@link VerifyResult}. */
+function finish(proof: SignedProof, ok: boolean): VerifyResult {
+  if (!ok) return fail('bad-signature');
+  return { ok: true, address: proof.address, chain: proof.chain };
+}
+
+/**
+ * Verify a {@link SignedProof} synchronously. Handles the five @noble-pure
+ * chains (evm/solana/bitcoin/ton/xrp). For Polkadot (Substrate sr25519/ed25519/
+ * ecdsa) use {@link verifyProofAsync} — a Substrate proof here returns
+ * `unsupported-scheme`.
+ */
+export function verifyProof(proof: SignedProof, expected: VerifyExpectation): VerifyResult {
+  const pre = preCrypto(proof, expected);
+  if (pre != null) return pre;
+
   const crypto = verifyCrypto(proof);
   if (crypto == null) {
     return fail('unsupported-scheme');
   }
-  if (!crypto) {
-    return fail('bad-signature');
-  }
+  return finish(proof, crypto);
+}
 
-  return { ok: true, address: proof.address, chain: proof.chain };
+/**
+ * Verify a {@link SignedProof} for ANY supported chain, including Polkadot.
+ * Identical binding/time checks and reasons as {@link verifyProof}; only the
+ * cryptographic step is async (Substrate sr25519 needs `cryptoWaitReady()`).
+ * The five sync chains are delegated to the same code — no behavioural drift.
+ */
+export async function verifyProofAsync(
+  proof: SignedProof,
+  expected: VerifyExpectation,
+): Promise<VerifyResult> {
+  const pre = preCrypto(proof, expected);
+  if (pre != null) return pre;
+
+  switch (proof.scheme) {
+    case 'sr25519':
+    case 'ed25519-substrate':
+    case 'ecdsa-substrate': {
+      const { verifyPolkadot } = await import('./polkadot/verify.js');
+      return finish(proof, await verifyPolkadot(proof));
+    }
+    default: {
+      const crypto = verifyCrypto(proof);
+      if (crypto == null) return fail('unsupported-scheme');
+      return finish(proof, crypto);
+    }
+  }
 }

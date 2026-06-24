@@ -8,7 +8,7 @@ bones live in `luxfi/exchange` and are eaten away there, never imported here.
 ## What this is
 
 The one canonical way for any Hanzo/Lux/Zoo/Pars surface to authenticate a
-wallet on EVM, Solana, Bitcoin, TON, or XRP. Replaces the EVM-only
+wallet on EVM, Solana, Bitcoin, TON, XRP, or Polkadot. Replaces the EVM-only
 `@web3-onboard` path in IAM and becomes the connect layer for the browser
 extension (`luxwallet/connect` → extension) and the native apps
 (`luxwallet/unstoppable-wallet-{android,ios}`).
@@ -43,6 +43,7 @@ src/
   bitcoin/{verify,connect}.ts— legacy+BIP-322 [verify] + sats-connect [connect]
   ton/{verify,connect}.ts    — ton_proof [verify] + @tonconnect/sdk [connect]
   xrp/{verify,connect}.ts    — secp256k1+ed25519 [verify] + @crossmarkio/sdk [connect]
+  polkadot/{verify,connect}.ts — sr25519+ed25519+ecdsa [verify, ASYNC] + injectedWeb3 [connect]
   connectors.ts   — getConnector(chain) factory + allConnectors() barrel
   login.ts        — loginWithWallet({chain, challenge}) — connect→signLogin→SignedProof
   __tests__/      — vitest; verifiers + EVM/Solana connector round-trips (mocked providers)
@@ -70,6 +71,13 @@ Each `src/<chain>/connect.ts` exports a class implementing `WalletConnector`
 - **XRP** — `@crossmarkio/sdk` (MIT). `signInAndWait(hex(utf8(message)))` →
   `{address, publicKey, signature}`; scheme from the key's family tag
   (`0xED`→`ed25519-xrpl`, else `secp256k1-xrpl`).
+- **Polkadot** — raw `window.injectedWeb3` (polkadot.js / Talisman / SubWallet /
+  Nova), no SDK. `enable()` → `accounts.get()` → `signer.signRaw({address,
+  data:hex(message), type:'bytes'})`. The extension WRAPS the message as
+  `<Bytes>…</Bytes>` before signing; the verifier reconstructs that. Scheme from
+  the account key type (`sr25519` default / `ed25519-substrate` / `ecdsa-substrate`).
+  publicKey recovered from the SS58 address via the OPTIONAL `@polkadot/util-crypto`
+  (browser-side only).
 
 **GemWallet NOT wired**: `@gemwallet/api` is a custom dual license (permission
 required for public/commercial use), violating the MIT/Apache/ISC-only rule. Its
@@ -85,10 +93,40 @@ behind `./connectors`, `./login`, and per-chain `./<chain>/connect` exports.
 dual-license note: one transitive dep, `node-forge` (via @crossmarkio/typings),
 is `(BSD-3-Clause OR GPL-2.0)` — we elect BSD-3-Clause. No GPL obligation.
 
-## Status (2026-06-22)
+## Polkadot / Substrate (the 6th ecosystem) — DONE 2026-06-23
 
-- **Verifier core COMPLETE — all 5 chains, both sides. 128 tests green**
-  (61 TS via `pnpm test`, 67 Go via `cd go && CGO_ENABLED=0 go test ./...`).
+Covers every Lux Bridge family (`supportedChains` include `dot`). Schemes:
+`sr25519` (default), `ed25519-substrate`, `ecdsa-substrate`.
+
+- **Signed bytes**: the polkadot.js extension `signRaw({type:'bytes'})` wraps the
+  CAIP-122 message as `<Bytes>{message}</Bytes>` (U8A_WRAP_PREFIX/POSTFIX) before
+  signing. `proof.message` stays the bare CAIP-122 string (so the core parses
+  domain/nonce/time); both verifiers reconstruct the wrap for the crypto check.
+- **Schnorrkel context** = `"substrate"`; transcript over the wrapped bytes.
+- **Address binding**: SS58 decode + checksum (blake2b-512 over `"SS58PRE"||body`),
+  then AccountId == pubkey (sr25519/ed25519) or == blake2b-256(pubkey) (ecdsa).
+- **TS** (`src/polkadot/verify.ts`, ASYNC — sr25519 needs `cryptoWaitReady()`):
+  `@polkadot/util-crypto` (**Apache-2.0**; sr25519 backend `@scure/sr25519` **MIT**)
+  + `@noble/hashes` blake2b + `bs58`. It is a SEPARATE entrypoint (`./polkadot/verify`)
+  so the other 5 chains' verify core stays `@noble`-pure & synchronous.
+  Dispatch: `verifyProofAsync` (all 6) vs `verifyProof` (sync, 5 — Substrate →
+  `unsupported-scheme`).
+- **Go** (`go/walletconnect/polkadot.go`): sr25519 via
+  `github.com/oasisprotocol/curve25519-voi` (**BSD-3-Clause**) — deliberately NOT
+  the LGPL-3.0 `ChainSafe/go-schnorrkel`; ed25519 stdlib; ecdsa decred secp256k1
+  recover; SS58 via `mr-tron/base58` + `x/crypto/blake2b`. **Zero copyleft** —
+  `go-licenses report` shows every new dep BSD-3/MIT/ISC; `check
+  --disallowed_types=forbidden,restricted` finds nothing copyleft.
+- **Cross-language KATs**: Go verifies the exact sr25519/ed25519/ecdsa signatures
+  the TS side (`@polkadot/util-crypto`) produced — `polkadot_test.go` pins them so
+  TS↔Go drift fails loudly.
+- **IAM enablement**: bump `connect/go` to **go/v0.1.2** and add `'polkadot'` to
+  the web `ENABLED_CHAINS`.
+
+## Status (2026-06-23)
+
+- **Verifier core COMPLETE — all 6 chains, both sides.**
+  (91 TS via `pnpm test`, full Go via `cd go && CGO_ENABLED=0 go test ./...`).
   - TS: EVM (EIP-191), Solana (ed25519), TON (ton_proof), XRP (secp256k1
     sha512half + ed25519, AccountID r-addr), Bitcoin (legacy recoverable ECDSA
     + BIP-322 simple P2WPKH/P2TR). All anchored to KAT vectors where they exist.

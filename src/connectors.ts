@@ -15,12 +15,14 @@ import { SolanaConnector } from './solana/connect.js';
 import { BitcoinConnector } from './bitcoin/connect.js';
 import { TonConnector, type TonConnectorOptions } from './ton/connect.js';
 import { XrpConnector } from './xrp/connect.js';
+import { PolkadotConnector } from './polkadot/connect.js';
 
 export { EvmConnector } from './evm/connect.js';
 export { SolanaConnector } from './solana/connect.js';
 export { BitcoinConnector } from './bitcoin/connect.js';
 export { TonConnector, type TonConnectorOptions } from './ton/connect.js';
 export { XrpConnector } from './xrp/connect.js';
+export { PolkadotConnector } from './polkadot/connect.js';
 
 /** Per-chain construction options. Only TON needs one (its dApp manifest URL). */
 export interface ConnectorOptions {
@@ -40,6 +42,8 @@ export function getConnector(chain: Chain, options: ConnectorOptions = {}): Wall
       return new TonConnector(options.ton);
     case 'xrp':
       return new XrpConnector();
+    case 'polkadot':
+      return new PolkadotConnector();
     default: {
       // Exhaustiveness: a new Chain must be handled here.
       const _never: never = chain;
@@ -56,5 +60,6 @@ export function allConnectors(options: ConnectorOptions = {}): WalletConnector[]
     getConnector('bitcoin', options),
     getConnector('ton', options),
     getConnector('xrp', options),
+    getConnector('polkadot', options),
   ];
 }

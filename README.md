@@ -1,6 +1,6 @@
 # @luxwallet/connect
 
-Multi-chain wallet connect + **Sign-In-With-X** for **EVM, Solana, Bitcoin, TON, XRP**.
+Multi-chain wallet connect + **Sign-In-With-X** for **EVM, Solana, Bitcoin, TON, XRP, Polkadot**.
 
 One vocabulary, one canonical login message ([CAIP-122](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/caip-122.md)),
 one verifier. **MIT licensed — zero GPL.** This is the clean wallet stack; the
@@ -34,8 +34,15 @@ connect(chain) ─► Account ─► signLogin(challenge) ─► SignedProof ─
 | Bitcoin | `sats-connect` (MIT) — Xverse/Leather/Unisat | BIP-322 | ✅ `bitcoin/connect.ts` | ✅ legacy + BIP-322 |
 | TON | `@tonconnect/sdk` (Apache-2.0) | `ton_proof` | ✅ `ton/connect.ts` | ✅ ed25519 envelope |
 | XRP | `@crossmarkio/sdk` (MIT) — Crossmark | `signInAndWait` | ✅ `xrp/connect.ts` | ✅ secp256k1 + ed25519 |
+| Polkadot | `window.injectedWeb3` (polkadot.js / Talisman / SubWallet) | `signRaw({type:'bytes'})` | ✅ `polkadot/connect.ts` | ✅ sr25519 + ed25519 + ecdsa |
 
 All connect libs are MIT/Apache/ISC — **no GPL anywhere** in the dependency tree.
+Polkadot verify uses `@polkadot/util-crypto` (Apache-2.0, sr25519 via `@scure/sr25519`
+MIT) in TS, and `oasisprotocol/curve25519-voi` (BSD-3-Clause) in Go — deliberately
+**NOT** the LGPL-3.0 `ChainSafe/go-schnorrkel`. Polkadot's verifier is async
+(sr25519 needs `cryptoWaitReady()`); use `verifyProofAsync` for all chains or
+`verifyPolkadot` standalone. The five other chains' verify core stays
+`@noble`-pure and synchronous.
 GemWallet is intentionally not wired: its only client, `@gemwallet/api`, ships
 under a custom dual license requiring GemWallet's permission for public/commercial
 use — incompatible with the MIT/Apache/ISC-only rule. Crossmark covers both XRPL

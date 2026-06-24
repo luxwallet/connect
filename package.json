@@ -1,7 +1,7 @@
 {
   "name": "@luxwallet/connect",
   "version": "0.1.0",
-  "description": "Multi-chain wallet connect + Sign-In-With-X (CAIP-122) for EVM, Solana, Bitcoin, TON, XRP. MIT, zero GPL.",
+  "description": "Multi-chain wallet connect + Sign-In-With-X (CAIP-122) for EVM, Solana, Bitcoin, TON, XRP, Polkadot. MIT, zero GPL.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -47,6 +47,14 @@
     "./xrp/connect": {
       "types": "./dist/xrp/connect.d.ts",
       "default": "./dist/xrp/connect.js"
+    },
+    "./polkadot/connect": {
+      "types": "./dist/polkadot/connect.d.ts",
+      "default": "./dist/polkadot/connect.js"
+    },
+    "./polkadot/verify": {
+      "types": "./dist/polkadot/verify.d.ts",
+      "default": "./dist/polkadot/verify.js"
     }
   },
   "files": [
@@ -68,6 +76,8 @@
   },
   "peerDependencies": {
     "@crossmarkio/sdk": "^0.4.0",
+    "@polkadot/util": "^14.0.0",
+    "@polkadot/util-crypto": "^14.0.0",
     "@tonconnect/sdk": "^4.0.0",
     "sats-connect": "^4.2.1",
     "viem": "^2.53.1"
@@ -84,10 +94,18 @@
     },
     "@crossmarkio/sdk": {
       "optional": true
+    },
+    "@polkadot/util": {
+      "optional": true
+    },
+    "@polkadot/util-crypto": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@crossmarkio/sdk": "^0.4.0",
+    "@polkadot/util": "^14.0.3",
+    "@polkadot/util-crypto": "^14.0.3",
     "@tonconnect/sdk": "^4.0.0",
     "@types/node": "^26.0.0",
     "sats-connect": "^4.2.1",

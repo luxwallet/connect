@@ -18,6 +18,7 @@ const CHAIN_LABEL: Record<Chain, string> = {
   bitcoin: 'Bitcoin',
   ton: 'TON',
   xrp: 'XRP Ledger',
+  polkadot: 'Polkadot',
 };
 
 export interface ParsedSiwx {
