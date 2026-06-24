@@ -144,9 +144,21 @@ func strPtr(s string) *string { return &s }
 // the statement/resources block handling and the required-field check.
 func ParseSiwxMessage(message string) (ParsedSiwx, error) {
 	var out ParsedSiwx
+	// Bound the work before splitting: an unbounded message (or one that is all
+	// newlines) would otherwise force a huge slice + per-line loop. Mirrors the
+	// TS parseSiwxMessage guards.
+	if len(message) == 0 {
+		return out, fmt.Errorf("caip122: empty message")
+	}
+	if len(message) > maxMessageLen {
+		return out, fmt.Errorf("caip122: message too large")
+	}
 	raw := strings.Split(message, "\n")
 	if len(raw) < 2 {
 		return out, fmt.Errorf("caip122: message too short")
+	}
+	if len(raw) > maxMessageLines {
+		return out, fmt.Errorf("caip122: too many lines")
 	}
 	header := headerRE.FindStringSubmatch(raw[0])
 	if header == nil {

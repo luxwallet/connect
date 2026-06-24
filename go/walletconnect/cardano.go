@@ -176,11 +176,14 @@ func cardanoAsCoseSign1(v cborValue, ok bool) (cardanoCoseSign1, bool) {
 // hashed payload, or scheme mismatch — never panics. Port of
 // src/cardano/verify.ts verifyCardano.
 func VerifyCardano(proof Proof) bool {
+	// Scheme + bounded presence of every attacker-controlled string. Bounds cap
+	// the COSE/CBOR decode + hashing and make this exported verifier safe when
+	// called directly (the dispatcher also gates).
 	if proof.Scheme != SchemeEd25519Cardano {
 		return false
 	}
-	if len(proof.PublicKey) == 0 || len(proof.Signature) == 0 ||
-		len(proof.Message) == 0 || len(proof.Address) == 0 {
+	if !withinLen(proof.PublicKey, maxPubKeyLen) || !withinLen(proof.Signature, maxSignatureLen) ||
+		!withinLen(proof.Message, maxMessageLen) || !withinLen(proof.Address, maxAddressLen) {
 		return false
 	}
 
@@ -196,6 +199,9 @@ func VerifyCardano(proof Proof) bool {
 	// Defence in depth: when a COSE_Key is carried, its -2 must equal PublicKey.
 	if proof.Extra != nil {
 		if ck, isStr := proof.Extra["coseKey"].(string); isStr && len(ck) > 0 {
+			if len(ck) > maxExtraStringLen {
+				return false
+			}
 			fromKey, ok := cardanoPublicKeyFromCoseKey(ck)
 			if !ok {
 				return false

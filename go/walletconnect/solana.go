@@ -15,6 +15,14 @@ import (
 // VerifySolana reports whether signature over message was produced by the key
 // behind address (base58 ed25519 public key). Fails closed on any decode error.
 func VerifySolana(message, signature, address string) bool {
+	// Bound attacker-controlled strings before base58-decoding the address or
+	// hashing the message (DoS guard; safe when called outside the dispatcher).
+	if len(message) > maxMessageLen || len(signature) == 0 || len(signature) > maxSignatureLen {
+		return false
+	}
+	if len(address) == 0 || len(address) > maxAddressLen {
+		return false
+	}
 	pub, err := base58.Decode(strings.TrimSpace(address))
 	if err != nil {
 		return false

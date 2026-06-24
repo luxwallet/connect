@@ -102,6 +102,9 @@ func blake2b512(data []byte) []byte {
 // the 1-byte address-type prefixes (network ids 0–63) and the 2-byte form
 // (64–16383), each with a 2-byte checksum. Mirrors the TS decodeSs58.
 func decodeSS58(address string) ([]byte, bool) {
+	if len(address) == 0 || len(address) > maxAddressLen {
+		return nil, false
+	}
 	raw, err := base58.Decode(trimSpace(address))
 	if err != nil {
 		return nil, false
@@ -137,7 +140,11 @@ func decodeSS58(address string) ([]byte, bool) {
 // check and the address binding must pass. Fails closed on any decode error or
 // scheme mismatch — never panics. Port of src/polkadot/verify.ts.
 func VerifyPolkadot(proof Proof) bool {
-	if len(proof.PublicKey) == 0 {
+	// Bounded presence of every attacker-controlled string before any decode.
+	if !withinLen(proof.PublicKey, maxPubKeyLen) || !withinLen(proof.Signature, maxSignatureLen) {
+		return false
+	}
+	if len(proof.Message) > maxMessageLen || !withinLen(proof.Address, maxAddressLen) {
 		return false
 	}
 	publicKey, err := hexToBytes(proof.PublicKey)

@@ -7,10 +7,20 @@
 import { ed25519 } from '@noble/curves/ed25519';
 import bs58 from 'bs58';
 import { utf8ToBytes, decodeSignature } from '../bytes.js';
+import { MAX_MESSAGE_LEN, MAX_SIGNATURE_LEN, MAX_ADDRESS_LEN } from '../limits.js';
 
 /** True iff `signature` over `message` was produced by the key behind `address`. */
 export function verifySolana(message: string, signature: string, address: string): boolean {
   try {
+    // Bound attacker-controlled strings before base58-decoding the address or
+    // hashing the message (DoS guard; safe when called outside the dispatcher).
+    if (typeof message !== 'string' || message.length > MAX_MESSAGE_LEN) return false;
+    if (typeof signature !== 'string' || signature.length === 0 || signature.length > MAX_SIGNATURE_LEN) {
+      return false;
+    }
+    if (typeof address !== 'string' || address.length === 0 || address.length > MAX_ADDRESS_LEN) {
+      return false;
+    }
     const pub = bs58.decode(address.trim());
     if (pub.length !== 32) return false;
     const sig = decodeSignature(signature);

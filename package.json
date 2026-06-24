@@ -1,6 +1,6 @@
 {
   "name": "@luxwallet/connect",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Multi-chain wallet connect + Sign-In-With-X (CAIP-122) for EVM, Solana, Bitcoin, TON, XRP, Polkadot, Cardano. MIT, zero GPL.",
   "license": "MIT",
   "type": "module",

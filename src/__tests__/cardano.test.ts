@@ -337,6 +337,39 @@ describe('verifyCardano — fail-closed hardening', () => {
     const { proof } = mintBase();
     expect(verifyCardano({ ...proof, publicKey: bytesToHex(new Uint8Array(31)) })).toBe(false);
   });
+
+  it('accepts a valid proof with a LARGE (but legal) message — sig cap must clear the embedded payload', () => {
+    // CIP-8 embeds the payload (the CAIP-122 message) inside COSE_Sign1, so the
+    // encoded signature is ≈ 2× the message bytes. A large-but-legal message
+    // (well under MAX_MESSAGE_LEN=8KiB) produces a signature > the old 4KiB cap;
+    // this proves MAX_SIGNATURE_LEN was raised so a real proof is never rejected.
+    const priv = seed(9);
+    const pub = ed25519.getPublicKey(priv);
+    const stakeHash = blake2b224(utf8ToBytes('stake-large'));
+    const { raw, bech32 } = baseAddress(pub, stakeHash);
+    const nonce = 'adaLarge0001';
+    // ~3 KiB statement → message ~3.3 KiB → COSE sig hex ~6.6 KiB (> old 4 KiB).
+    const statement = 'I authorize this login. '.repeat(130);
+    const challenge = newChallenge({ domain: 'hanzo.id', uri: 'https://hanzo.id/login', statement, nonce, now: NOW });
+    const message = buildSiwxMessage({ challenge, address: bech32, chain: 'cardano' });
+    const payload = utf8ToBytes(message);
+    const protectedSer = encProtectedMap(raw);
+    const sigStruct = encSigStructure(protectedSer, payload);
+    const signature = ed25519.sign(sigStruct, priv);
+    const coseSign1 = encCoseSign1(protectedSer, payload, signature);
+    const proof: SignedProof = {
+      chain: 'cardano', scheme: 'ed25519-cardano', address: bech32,
+      publicKey: bytesToHex(pub), message, signature: bytesToHex(coseSign1),
+      extra: { coseKey: bytesToHex(encCoseKey(pub)) },
+    };
+    // Sanity: this really does exceed the old 4 KiB sig cap (else the test is moot).
+    expect(proof.signature.length).toBeGreaterThan(4 * 1024);
+    expect(verifyCardano(proof)).toBe(true);
+    // And the full dispatcher path accepts it too.
+    return verifyProofAsync(proof, { domain: 'hanzo.id', nonce, now: NOW }).then((res) => {
+      expect(res.ok).toBe(true);
+    });
+  });
 });
 
 describe('verifyProofAsync — Cardano end-to-end', () => {

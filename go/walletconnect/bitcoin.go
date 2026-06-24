@@ -700,6 +700,15 @@ func btcDecodeP2TRProgram(address string) ([]byte, bool) {
 // P2PKH/P2WPKH/P2TR address binding. Port of src/bitcoin/verify.ts. Fails
 // closed: any parse/branch irregularity returns false, and it never panics.
 func VerifyBitcoin(proof Proof) bool {
+	// Bound attacker-controlled strings before any decode/hash (DoS guard; safe
+	// when called outside the dispatcher).
+	if len(proof.Message) > maxMessageLen || !withinLen(proof.Signature, maxSignatureLen) {
+		return false
+	}
+	if !withinLen(proof.Address, maxAddressLen) {
+		return false
+	}
+
 	typ := btcAddressTypeOf(proof)
 	if typ == btcTypeNone {
 		return false

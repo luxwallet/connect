@@ -30,6 +30,13 @@ import { sha512 } from '@noble/hashes/sha512';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import type { SignedProof } from '../types.js';
 import { hexToBytes, decodeSignature, utf8ToBytes, concatBytes } from '../bytes.js';
+import {
+  MAX_MESSAGE_LEN,
+  MAX_SIGNATURE_LEN,
+  MAX_PUBKEY_LEN,
+  MAX_ADDRESS_LEN,
+  withinLen,
+} from '../limits.js';
 
 /** XRPL's base58 alphabet (NOT the Bitcoin/IPFS alphabet — different order). */
 const XRPL_ALPHABET = 'rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz';
@@ -88,7 +95,12 @@ function deriveAddress(publicKey33: Uint8Array): string {
 
 export function verifyXrp(proof: SignedProof): boolean {
   try {
-    if (proof.publicKey == null || proof.publicKey.length === 0) return false;
+    // Bound every attacker-controlled string before any decode/hash (DoS guard;
+    // safe when called outside the dispatcher).
+    if (!withinLen(proof.publicKey, MAX_PUBKEY_LEN)) return false;
+    if (!withinLen(proof.signature, MAX_SIGNATURE_LEN)) return false;
+    if (!withinLen(proof.message, MAX_MESSAGE_LEN)) return false;
+    if (!withinLen(proof.address, MAX_ADDRESS_LEN)) return false;
 
     const publicKey = hexToBytes(proof.publicKey);
     if (publicKey.length !== PUBKEY_LEN) return false;

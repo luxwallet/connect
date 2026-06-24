@@ -75,6 +75,31 @@ type Result struct {
 
 func fail(r Reason) Result { return Result{OK: false, Reason: r} }
 
+// gate is the structural + size + chain↔scheme check, run before any parse or
+// crypto. Rejects a proof whose attacker-controlled fields are oversized (DoS)
+// or whose (chain, scheme) pair is illegitimate (cross-chain scheme confusion).
+// Returns (failing Result, true) when the proof must be rejected, or
+// (_, false) when it is shaped well enough to proceed. PublicKey is optional per
+// scheme, so it is bounded only when present. Mirrors the TS gate().
+func gate(proof Proof) (Result, bool) {
+	if !withinLen(proof.Message, maxMessageLen) {
+		return fail(ReasonMalformedMessage), true
+	}
+	if !withinLen(proof.Signature, maxSignatureLen) {
+		return fail(ReasonBadSignature), true
+	}
+	if !withinLen(proof.Address, maxAddressLen) {
+		return fail(ReasonAddressMismatch), true
+	}
+	if proof.PublicKey != "" && len(proof.PublicKey) > maxPubKeyLen {
+		return fail(ReasonMissingPublicKey), true
+	}
+	if !chainAllowsScheme(proof.Chain, proof.Scheme) {
+		return fail(ReasonUnsupportedScheme), true
+	}
+	return Result{}, false
+}
+
 // addressesEqual is case-insensitive only for EVM (checksummed hex); all other
 // chains compare exactly. Mirrors the TS addressesEqual.
 func addressesEqual(chain Chain, a, b string) bool {
@@ -133,7 +158,22 @@ func crypto(p Proof) (ok, supported bool) {
 // per-chain cryptographic verifier. Fails closed: any unknown scheme or
 // malformed input returns {OK: false, Reason}, never panics. Mirrors the TS
 // verifyProof exactly, including check order and reasons.
-func VerifyProof(proof Proof, expected Expectation) Result {
+func VerifyProof(proof Proof, expected Expectation) (result Result) {
+	// Absolute backstop: a per-chain verifier or parser that panics despite
+	// being written panic-free must never escape as a panic — that is not
+	// fail-closed. Any unexpected panic collapses to a rejected proof. Mirrors
+	// the TS try/catch wrapping verifyProof.
+	defer func() {
+		if r := recover(); r != nil {
+			result = fail(ReasonBadSignature)
+		}
+	}()
+
+	// Structural + size + chain↔scheme gate before any parse or crypto.
+	if bad, rejected := gate(proof); rejected {
+		return bad
+	}
+
 	parsed, err := ParseSiwxMessage(proof.Message)
 	if err != nil {
 		return fail(ReasonMalformedMessage)

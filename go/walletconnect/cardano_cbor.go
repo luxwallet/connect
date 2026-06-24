@@ -19,6 +19,13 @@ import (
 
 var errCbor = errors.New("cbor: malformed")
 
+// maxCborDepth bounds the recursive decoder. A COSE_Sign1 / COSE_Key is shallow
+// (array → map/bstr → value, depth ≤ 3); this rejects a crafted deeply-nested
+// input (e.g. 0x81 0x81 0x81 …) so it can't exhaust the goroutine stack — a DoS
+// that Go's recover() does NOT catch (a stack overflow is fatal). 16 is far
+// above any real COSE object. Mirrors MAX_CBOR_DEPTH in src/cardano/cbor.ts.
+const maxCborDepth = 16
+
 // cborValue is a decoded CBOR value. Maps use cborMap; integers are int64;
 // byte/text strings are []byte/string; arrays are []cborValue.
 type cborValue any
@@ -103,7 +110,10 @@ func (c *cborCursor) readHead() (major int, arg int64, err error) {
 	return major, arg, err
 }
 
-func (c *cborCursor) decodeValue() (cborValue, error) {
+func (c *cborCursor) decodeValue(depth int) (cborValue, error) {
+	if depth > maxCborDepth {
+		return nil, errCbor
+	}
 	major, arg, err := c.readHead()
 	if err != nil {
 		return nil, err
@@ -133,12 +143,14 @@ func (c *cborCursor) decodeValue() (cborValue, error) {
 		c.pos += int(arg)
 		return s, nil
 	case 4: // array
-		if arg < 0 {
+		// Each element consumes >=1 byte, so a declared length above the bytes
+		// remaining is impossible — reject before allocating.
+		if arg < 0 || arg > int64(len(c.buf)-c.pos) {
 			return nil, errCbor
 		}
 		arr := make([]cborValue, 0, arg)
 		for i := int64(0); i < arg; i++ {
-			v, e := c.decodeValue()
+			v, e := c.decodeValue(depth + 1)
 			if e != nil {
 				return nil, e
 			}
@@ -146,16 +158,17 @@ func (c *cborCursor) decodeValue() (cborValue, error) {
 		}
 		return arr, nil
 	case 5: // map
-		if arg < 0 {
+		// Each entry consumes >=2 bytes (key + value); reject an impossible len.
+		if arg < 0 || arg > int64(len(c.buf)-c.pos) {
 			return nil, errCbor
 		}
 		m := &cborMap{entries: make([]cborMapEntry, 0, arg)}
 		for i := int64(0); i < arg; i++ {
-			k, e := c.decodeValue()
+			k, e := c.decodeValue(depth + 1)
 			if e != nil {
 				return nil, e
 			}
-			v, e2 := c.decodeValue()
+			v, e2 := c.decodeValue(depth + 1)
 			if e2 != nil {
 				return nil, e2
 			}
@@ -189,7 +202,7 @@ func (c *cborCursor) decodeValue() (cborValue, error) {
 // Returns ok=false on any malformation. Mirrors the TS cborDecode.
 func cborDecode(buf []byte) (cborValue, bool) {
 	c := &cborCursor{buf: buf}
-	v, err := c.decodeValue()
+	v, err := c.decodeValue(0)
 	if err != nil {
 		return nil, false
 	}

@@ -27,6 +27,14 @@ import { sha256 } from '@noble/hashes/sha256';
 import type { SignedProof } from '../types.js';
 import { parseSiwxMessage } from '../caip122.js';
 import { hexToBytes, base64ToBytes, utf8ToBytes, concatBytes } from '../bytes.js';
+import {
+  MAX_MESSAGE_LEN,
+  MAX_SIGNATURE_LEN,
+  MAX_PUBKEY_LEN,
+  MAX_ADDRESS_LEN,
+  MAX_EXTRA_STRING_LEN,
+  withinLen,
+} from '../limits.js';
 
 /** ton_proof static prefixes (TON Connect v2). */
 const PROOF_PREFIX = utf8ToBytes('ton-proof-item-v2/');
@@ -53,11 +61,16 @@ function readExtra(extra: unknown): TonProofExtra | null {
   const { timestamp, domain, payload, workchain, addressHashHex } = e;
   // timestamp: a finite, non-negative integer number of unix seconds.
   if (typeof timestamp !== 'number' || !Number.isInteger(timestamp) || timestamp < 0) return null;
-  // workchain: a finite integer (0 = basechain, -1 = masterchain typically).
+  // workchain: a finite integer that must fit a signed 32-bit field (int32BE in
+  // the proof message). Reject out-of-range so setInt32 can't silently wrap.
   if (typeof workchain !== 'number' || !Number.isInteger(workchain)) return null;
-  if (typeof domain !== 'string') return null;
-  if (typeof payload !== 'string') return null;
-  if (typeof addressHashHex !== 'string') return null;
+  if (workchain < -0x80000000 || workchain > 0x7fffffff) return null;
+  // domain/payload/addressHashHex: strings, each bounded (attacker-controlled,
+  // feed the hash pre-image / hex decode). Empty domain/payload is legitimate
+  // (payload binds to the nonce, checked later), so allow length 0 here.
+  if (typeof domain !== 'string' || domain.length > MAX_EXTRA_STRING_LEN) return null;
+  if (typeof payload !== 'string' || payload.length > MAX_EXTRA_STRING_LEN) return null;
+  if (typeof addressHashHex !== 'string' || addressHashHex.length > MAX_EXTRA_STRING_LEN) return null;
   return { timestamp, domain, payload, workchain, addressHashHex };
 }
 
@@ -109,12 +122,14 @@ function proofDigest(message: Uint8Array): Uint8Array {
  */
 export function verifyTon(proof: SignedProof): boolean {
   try {
-    // --- 0. Structural presence: scheme, public key, signature, envelope. ---
+    // --- 0. Structural presence + bounds: scheme, public key, signature,
+    // message, address, envelope. Bounds make this exported verifier safe when
+    // called directly (the dispatcher also gates) and cap pre-crypto work. ---
     if (proof.scheme !== 'ton-proof') return false;
-    if (typeof proof.publicKey !== 'string' || proof.publicKey.length === 0) return false;
-    if (typeof proof.signature !== 'string' || proof.signature.length === 0) return false;
-    if (typeof proof.message !== 'string' || proof.message.length === 0) return false;
-    if (typeof proof.address !== 'string' || proof.address.length === 0) return false;
+    if (!withinLen(proof.publicKey, MAX_PUBKEY_LEN)) return false;
+    if (!withinLen(proof.signature, MAX_SIGNATURE_LEN)) return false;
+    if (!withinLen(proof.message, MAX_MESSAGE_LEN)) return false;
+    if (!withinLen(proof.address, MAX_ADDRESS_LEN)) return false;
 
     const extra = readExtra(proof.extra);
     if (extra === null) return false;

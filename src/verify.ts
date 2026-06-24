@@ -22,11 +22,39 @@ import { verifySolana } from './solana/verify.js';
 import { verifyTon } from './ton/verify.js';
 import { verifyBitcoin } from './bitcoin/verify.js';
 import { verifyXrp } from './xrp/verify.js';
+import {
+  MAX_MESSAGE_LEN,
+  MAX_SIGNATURE_LEN,
+  MAX_PUBKEY_LEN,
+  MAX_ADDRESS_LEN,
+  withinLen,
+  chainAllowsScheme,
+} from './limits.js';
 
 const DEFAULT_SKEW_MS = 5 * 60 * 1000;
 
 function fail(reason: NonNullable<VerifyResult['reason']>): VerifyResult {
   return { ok: false, reason };
+}
+
+/**
+ * Structural + size gate, run before any parse or crypto. Rejects a proof whose
+ * attacker-controlled fields are absent, the wrong type, oversized (DoS), or
+ * whose (chain, scheme) pair is illegitimate (cross-chain scheme confusion).
+ * Returns the failing {@link VerifyResult}, or null when the proof is shaped
+ * well enough to proceed. `publicKey` is optional per scheme, so it is bounded
+ * only when present (the per-chain verifier enforces presence where required).
+ */
+function gate(proof: SignedProof): VerifyResult | null {
+  if (proof == null || typeof proof !== 'object') return fail('malformed-message');
+  if (!withinLen(proof.message, MAX_MESSAGE_LEN)) return fail('malformed-message');
+  if (!withinLen(proof.signature, MAX_SIGNATURE_LEN)) return fail('bad-signature');
+  if (!withinLen(proof.address, MAX_ADDRESS_LEN)) return fail('address-mismatch');
+  if (proof.publicKey != null && !withinLen(proof.publicKey, MAX_PUBKEY_LEN)) {
+    return fail('missing-public-key');
+  }
+  if (!chainAllowsScheme(proof.chain, proof.scheme)) return fail('unsupported-scheme');
+  return null;
 }
 
 /** Case-insensitive only for EVM (checksummed hex); all others are exact. */
@@ -125,14 +153,24 @@ function finish(proof: SignedProof, ok: boolean): VerifyResult {
  * `unsupported-scheme`.
  */
 export function verifyProof(proof: SignedProof, expected: VerifyExpectation): VerifyResult {
-  const pre = preCrypto(proof, expected);
-  if (pre != null) return pre;
+  try {
+    const bad = gate(proof);
+    if (bad != null) return bad;
 
-  const crypto = verifyCrypto(proof);
-  if (crypto == null) {
-    return fail('unsupported-scheme');
+    const pre = preCrypto(proof, expected);
+    if (pre != null) return pre;
+
+    const crypto = verifyCrypto(proof);
+    if (crypto == null) {
+      return fail('unsupported-scheme');
+    }
+    return finish(proof, crypto);
+  } catch {
+    // Absolute backstop: a verifier or parse that throws despite its own
+    // try/catch must never escape as an exception — that is not fail-closed.
+    // Any unexpected throw collapses to a rejected proof.
+    return fail('bad-signature');
   }
-  return finish(proof, crypto);
 }
 
 /**
@@ -145,27 +183,35 @@ export async function verifyProofAsync(
   proof: SignedProof,
   expected: VerifyExpectation,
 ): Promise<VerifyResult> {
-  const pre = preCrypto(proof, expected);
-  if (pre != null) return pre;
+  try {
+    const bad = gate(proof);
+    if (bad != null) return bad;
 
-  switch (proof.scheme) {
-    case 'sr25519':
-    case 'ed25519-substrate':
-    case 'ecdsa-substrate': {
-      const { verifyPolkadot } = await import('./polkadot/verify.js');
-      return finish(proof, await verifyPolkadot(proof));
+    const pre = preCrypto(proof, expected);
+    if (pre != null) return pre;
+
+    switch (proof.scheme) {
+      case 'sr25519':
+      case 'ed25519-substrate':
+      case 'ecdsa-substrate': {
+        const { verifyPolkadot } = await import('./polkadot/verify.js');
+        return finish(proof, await verifyPolkadot(proof));
+      }
+      case 'ed25519-cardano': {
+        // Cardano's verifier is pure-synchronous (@noble + inline CBOR/bech32, no
+        // WASM), but it is lazy-loaded here so the sync verify core never pulls
+        // the CBOR/bech32 modules. Sits on the async path with Polkadot.
+        const { verifyCardano } = await import('./cardano/verify.js');
+        return finish(proof, verifyCardano(proof));
+      }
+      default: {
+        const crypto = verifyCrypto(proof);
+        if (crypto == null) return fail('unsupported-scheme');
+        return finish(proof, crypto);
+      }
     }
-    case 'ed25519-cardano': {
-      // Cardano's verifier is pure-synchronous (@noble + inline CBOR/bech32, no
-      // WASM), but it is lazy-loaded here so the sync verify core never pulls
-      // the CBOR/bech32 modules. Sits on the async path with Polkadot.
-      const { verifyCardano } = await import('./cardano/verify.js');
-      return finish(proof, verifyCardano(proof));
-    }
-    default: {
-      const crypto = verifyCrypto(proof);
-      if (crypto == null) return fail('unsupported-scheme');
-      return finish(proof, crypto);
-    }
+  } catch {
+    // Absolute backstop (matches verifyProof): never let an exception escape.
+    return fail('bad-signature');
   }
 }

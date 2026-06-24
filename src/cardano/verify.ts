@@ -39,6 +39,14 @@ import type { SignedProof } from '../types.js';
 import { hexToBytes, utf8ToBytes } from '../bytes.js';
 import { cborDecode, buildSigStructure, type CborMap, type CborValue } from './cbor.js';
 import { bech32Decode } from './bech32.js';
+import {
+  MAX_MESSAGE_LEN,
+  MAX_SIGNATURE_LEN,
+  MAX_PUBKEY_LEN,
+  MAX_ADDRESS_LEN,
+  MAX_EXTRA_STRING_LEN,
+  withinLen,
+} from '../limits.js';
 
 /** ed25519: 32-byte public key, 64-byte signature, 28-byte blake2b key hash. */
 const ED25519_PUBKEY_LEN = 32;
@@ -147,11 +155,14 @@ function asCoseSign1(
  */
 export function verifyCardano(proof: SignedProof): boolean {
   try {
+    // Scheme + bounded presence of every attacker-controlled string. Bounds cap
+    // the COSE/CBOR decode + hashing and make this exported verifier safe when
+    // called directly (the dispatcher also gates).
     if (proof.scheme !== 'ed25519-cardano') return false;
-    if (typeof proof.publicKey !== 'string' || proof.publicKey.length === 0) return false;
-    if (typeof proof.signature !== 'string' || proof.signature.length === 0) return false;
-    if (typeof proof.message !== 'string' || proof.message.length === 0) return false;
-    if (typeof proof.address !== 'string' || proof.address.length === 0) return false;
+    if (!withinLen(proof.publicKey, MAX_PUBKEY_LEN)) return false;
+    if (!withinLen(proof.signature, MAX_SIGNATURE_LEN)) return false;
+    if (!withinLen(proof.message, MAX_MESSAGE_LEN)) return false;
+    if (!withinLen(proof.address, MAX_ADDRESS_LEN)) return false;
 
     // The ed25519 public key is the first 32 bytes (extended bip32 keys append a
     // 32-byte chaincode; we hash/verify with the bare ed25519 key only).
@@ -164,6 +175,7 @@ export function verifyCardano(proof: SignedProof): boolean {
     // Defence in depth: when a COSE_Key is carried, its -2 must equal publicKey.
     const coseKeyHex = (proof.extra as Record<string, unknown> | undefined)?.coseKey;
     if (typeof coseKeyHex === 'string' && coseKeyHex.length > 0) {
+      if (coseKeyHex.length > MAX_EXTRA_STRING_LEN) return false;
       const fromKey = publicKeyFromCoseKey(coseKeyHex);
       if (fromKey === null) return false;
       if (!bytesEqual(fromKey.subarray(0, ED25519_PUBKEY_LEN), pub)) return false;

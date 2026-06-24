@@ -37,6 +37,15 @@ export type CborMap = Map<number | bigint | string, CborValue>;
 /** Thrown internally on any malformed/unsupported input; callers fail closed. */
 class CborError extends Error {}
 
+/**
+ * Maximum CBOR nesting depth. A COSE_Sign1 / COSE_Key is shallow (array →
+ * map/bstr → value, depth ≤ 3); this bounds the recursive decoder so a crafted
+ * deeply-nested input (`81 81 81 …`) can't exhaust the stack — a DoS that would
+ * otherwise depend solely on the signature-size cap. 16 is far above any real
+ * COSE object. Mirrors maxCborDepth in cardano_cbor.go.
+ */
+const MAX_CBOR_DEPTH = 16;
+
 interface Cursor {
   readonly buf: Uint8Array;
   pos: number;
@@ -73,7 +82,8 @@ function asLen(arg: number | bigint): number {
   return n;
 }
 
-function decodeValue(c: Cursor): CborValue {
+function decodeValue(c: Cursor, depth: number): CborValue {
+  if (depth > MAX_CBOR_DEPTH) throw new CborError('nesting too deep');
   const { major, arg } = readHead(c);
   switch (major) {
     case 0: // unsigned int
@@ -96,16 +106,21 @@ function decodeValue(c: Cursor): CborValue {
     }
     case 4: { // array
       const len = asLen(arg);
+      // Guard against a huge declared length on a tiny buffer: each element
+      // consumes ≥1 byte, so len can't exceed the bytes remaining.
+      if (len > c.buf.length - c.pos) throw new CborError('array longer than buffer');
       const arr: CborValue[] = [];
-      for (let i = 0; i < len; i++) arr.push(decodeValue(c));
+      for (let i = 0; i < len; i++) arr.push(decodeValue(c, depth + 1));
       return arr;
     }
     case 5: { // map
       const len = asLen(arg);
+      // Each entry consumes ≥2 bytes (key + value); reject an impossible length.
+      if (len > (c.buf.length - c.pos)) throw new CborError('map longer than buffer');
       const m: CborMap = new Map();
       for (let i = 0; i < len; i++) {
-        const k = decodeValue(c);
-        const v = decodeValue(c);
+        const k = decodeValue(c, depth + 1);
+        const v = decodeValue(c, depth + 1);
         if (typeof k !== 'number' && typeof k !== 'bigint' && typeof k !== 'string') {
           throw new CborError('unsupported map key type');
         }
@@ -127,7 +142,7 @@ function decodeValue(c: Cursor): CborValue {
 export function cborDecode(buf: Uint8Array): CborValue | null {
   try {
     const c: Cursor = { buf, pos: 0 };
-    const v = decodeValue(c);
+    const v = decodeValue(c, 0);
     // Trailing bytes after a complete value are a malformation — reject.
     if (c.pos !== buf.length) return null;
     return v;

@@ -146,6 +146,42 @@ Covers every Lux Bridge family (`supportedChains` include `dot`). Schemes:
   "Lux Wallet"/`network.lux.wallet` on `lux-rebrand` branches. XRP needs a
   MarketKit fork + new `ripple-kit` libs (no upstream HS kit).
 
+## Defense-in-depth hardening (2026-06-24)
+
+The verify core was hardened so every verifier + the dispatcher fails closed
+under any malformed/adversarial input, never throws/panics, and resists DoS.
+**No new dependency** (limits + fuzz tests are first-party). All 7 chains, both
+sides. Tests: **160 TS** (`pnpm test`) + full Go (`go test ./walletconnect/`,
+incl. property/corpus + `go test -fuzz`). Prod runtime tree is 4 deps, all MIT.
+
+- **Single bounds module** `src/limits.ts` ↔ `go/walletconnect/limits.go`: size
+  caps (message 8 KiB, signature 20 KiB — must clear the embedded payload in a
+  Cardano COSE_Sign1 which is ≈2× the message, pubkey 1 KiB, address 512,
+  extra-string 8 KiB, message-lines 64) + a **chain↔scheme table**
+  (`chainAllowsScheme`) that rejects every illegitimate (chain, scheme) pair
+  up front — closes cross-chain scheme confusion by construction, not by luck.
+- **Dispatcher gate + backstop** (`src/verify.ts`, `verify.go`): `gate()` runs
+  size + chain↔scheme before any parse/crypto; the WHOLE body of `verifyProof` /
+  `verifyProofAsync` is wrapped (TS try/catch, Go `defer recover()`) so any
+  unexpected throw/panic from a layer below collapses to a rejected proof.
+- **Per-verifier bounds**: every verifier (EVM/Solana/TON/XRP/Bitcoin/Polkadot/
+  Cardano) independently bounds its attacker-controlled strings BEFORE hashing /
+  decoding — safe when called directly (they are exported), not just via dispatch.
+- **caip122 parse** bounds message size + line count before splitting.
+- **Strict base64** (`src/bytes.ts`): rejects non-canonical base64 (was lenient
+  `atob`) — also removes a latent TS/Go divergence (Go `StdEncoding` is strict).
+- **CBOR depth cap** (Cardano, both langs): `MAX_CBOR_DEPTH=16` + array/map
+  declared-length ≤ remaining-bytes guard, so a deeply-nested or huge-length
+  blob can't blow the stack / preallocate gigabytes. (In Go a stack overflow is
+  FATAL and not `recover()`-able — this is the load-bearing guard there.)
+- **TON workchain** range-checked to int32 in TS (Go already did) so `setInt32`
+  can't silently wrap.
+- **Fuzz/property tests**: `src/__tests__/fuzz.test.ts` (47 tests, 30k+ random
+  inputs) + `go/walletconnect/fuzz_test.go` (property + adversarial corpus +
+  3 native `Fuzz*` — 610k/1.2M/1.0M execs clean). Invariants asserted: (A) never
+  throws/panics, (B) never returns ok for a non-valid proof, with a
+  `ranCrypto>0` sanity gate proving the fuzzers reach the crypto layer.
+
 ## Consumers (the wallet product line, all under `luxwallet`)
 
 - `luxwallet/connect` (this) — SDK: web + extension connect/login.

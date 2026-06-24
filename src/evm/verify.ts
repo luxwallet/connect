@@ -9,6 +9,7 @@
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { keccak_256 } from '@noble/hashes/sha3';
 import { utf8ToBytes, concatBytes, hexToBytes, bytesToHex } from '../bytes.js';
+import { MAX_MESSAGE_LEN, MAX_SIGNATURE_LEN, MAX_ADDRESS_LEN } from '../limits.js';
 
 /** keccak256(\x19Ethereum Signed Message:\n<len><msg>). */
 export function eip191Digest(message: string): Uint8Array {
@@ -31,6 +32,10 @@ export function addressFromPublicKey(pubUncompressed: Uint8Array): string {
  */
 export function recoverEvmAddress(message: string, signature: string): string | null {
   try {
+    // Bound inputs before hashing the message / decoding the sig (DoS guard;
+    // also makes this exported helper safe when called outside the dispatcher).
+    if (typeof message !== 'string' || message.length > MAX_MESSAGE_LEN) return null;
+    if (typeof signature !== 'string' || signature.length > MAX_SIGNATURE_LEN) return null;
     const sig = hexToBytes(signature);
     if (sig.length !== 65) return null;
     const compact = sig.slice(0, 64);
@@ -50,6 +55,9 @@ export function recoverEvmAddress(message: string, signature: string): string | 
 
 /** True iff `signature` over `message` was produced by `address`. */
 export function verifyEvm(message: string, signature: string, address: string): boolean {
+  if (typeof address !== 'string' || address.length === 0 || address.length > MAX_ADDRESS_LEN) {
+    return false;
+  }
   const recovered = recoverEvmAddress(message, signature);
   if (recovered == null) return false;
   return recovered.toLowerCase() === address.trim().toLowerCase();

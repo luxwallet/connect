@@ -35,6 +35,13 @@ import { blake2b } from '@noble/hashes/blake2b';
 import bs58 from 'bs58';
 import type { SignedProof, SignatureScheme } from '../types.js';
 import { hexToBytes } from '../bytes.js';
+import {
+  MAX_MESSAGE_LEN,
+  MAX_SIGNATURE_LEN,
+  MAX_PUBKEY_LEN,
+  MAX_ADDRESS_LEN,
+  withinLen,
+} from '../limits.js';
 
 /** The schemes this verifier handles. */
 const SUBSTRATE_SCHEMES: ReadonlySet<SignatureScheme> = new Set<SignatureScheme>([
@@ -70,6 +77,9 @@ function ss58Checksum(preimage: Uint8Array): Uint8Array {
  * checksum, which together cover every public Substrate network.
  */
 function decodeSs58(address: string): Uint8Array | null {
+  if (typeof address !== 'string' || address.length === 0 || address.length > MAX_ADDRESS_LEN) {
+    return null;
+  }
   let raw: Uint8Array;
   try {
     raw = bs58.decode(address.trim());
@@ -127,7 +137,11 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 export async function verifyPolkadot(proof: SignedProof): Promise<boolean> {
   try {
     if (!SUBSTRATE_SCHEMES.has(proof.scheme)) return false;
-    if (proof.publicKey == null || proof.publicKey.length === 0) return false;
+    // Bounded presence of every attacker-controlled string before any decode.
+    if (!withinLen(proof.publicKey, MAX_PUBKEY_LEN)) return false;
+    if (!withinLen(proof.signature, MAX_SIGNATURE_LEN)) return false;
+    if (!withinLen(proof.message, MAX_MESSAGE_LEN)) return false;
+    if (!withinLen(proof.address, MAX_ADDRESS_LEN)) return false;
 
     const publicKey = hexToBytes(proof.publicKey);
     if (publicKey.length !== PUBKEY_LEN[proof.scheme]) return false;

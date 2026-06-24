@@ -103,16 +103,18 @@ func tonReadExtra(extra map[string]any) (tonProofExtra, bool) {
 		return out, false
 	}
 
+	// domain/payload/addressHashHex: strings, each bounded (attacker-controlled,
+	// feed the hash pre-image / hex decode). Empty domain/payload is legitimate.
 	domain, ok := extra["domain"].(string)
-	if !ok {
+	if !ok || len(domain) > maxExtraStringLen {
 		return out, false
 	}
 	payload, ok := extra["payload"].(string)
-	if !ok {
+	if !ok || len(payload) > maxExtraStringLen {
 		return out, false
 	}
 	addressHashHex, ok := extra["addressHashHex"].(string)
-	if !ok {
+	if !ok || len(addressHashHex) > maxExtraStringLen {
 		return out, false
 	}
 
@@ -186,20 +188,22 @@ func tonProofDigest(message []byte) []byte {
 // envelope is bound to the CAIP-122 message (nonce == payload, address ==
 // signer). Any other condition -> false. Fails closed; never panics.
 func VerifyTon(proof Proof) bool {
-	// --- 0. Structural presence: scheme, public key, signature, envelope. ---
+	// --- 0. Structural presence + bounds: scheme, public key, signature,
+	// message, address, envelope. Bounds make this exported verifier safe when
+	// called directly (the dispatcher also gates) and cap pre-crypto work. ---
 	if proof.Scheme != SchemeTonProof {
 		return false
 	}
-	if len(proof.PublicKey) == 0 {
+	if !withinLen(proof.PublicKey, maxPubKeyLen) {
 		return false
 	}
-	if len(proof.Signature) == 0 {
+	if !withinLen(proof.Signature, maxSignatureLen) {
 		return false
 	}
-	if len(proof.Message) == 0 {
+	if !withinLen(proof.Message, maxMessageLen) {
 		return false
 	}
-	if len(proof.Address) == 0 {
+	if !withinLen(proof.Address, maxAddressLen) {
 		return false
 	}
 

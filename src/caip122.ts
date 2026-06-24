@@ -10,6 +10,7 @@
  * for IAM can mirror them byte-for-byte.
  */
 import type { Chain, LoginChallenge } from './types.js';
+import { MAX_MESSAGE_LEN, MAX_MESSAGE_LINES } from './limits.js';
 
 /** Human chain label used on the first line of the message. */
 const CHAIN_LABEL: Record<Chain, string> = {
@@ -93,9 +94,21 @@ const FIELD_RE = /^(?<key>URI|Version|Chain ID|Nonce|Issued At|Expiration Time|N
 
 /** Parse a CAIP-122 message back into its fields. Throws on malformed input. */
 export function parseSiwxMessage(message: string): ParsedSiwx {
+  // Bound the work before splitting: an unbounded message (or one that is all
+  // newlines) would otherwise force a huge array + per-line loop. A real login
+  // message is a few hundred bytes and < 20 lines. Callers fail closed on throw.
+  if (typeof message !== 'string' || message.length === 0) {
+    throw new Error('caip122: empty message');
+  }
+  if (message.length > MAX_MESSAGE_LEN) {
+    throw new Error('caip122: message too large');
+  }
   const raw = message.split('\n');
   if (raw.length < 2) {
     throw new Error('caip122: message too short');
+  }
+  if (raw.length > MAX_MESSAGE_LINES) {
+    throw new Error('caip122: too many lines');
   }
   const header = HEADER_RE.exec(raw[0] ?? '');
   if (!header?.groups) {

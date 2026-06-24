@@ -268,6 +268,65 @@ func TestCardanoRoundTripInGo(t *testing.T) {
 	}
 }
 
+// TestCardanoLargeMessageRoundTrip proves maxSignatureLen clears the embedded
+// payload: CIP-8 embeds the message in COSE_Sign1, so a large-but-legal message
+// (< maxMessageLen) yields a signature ≈ 2× its size — which must exceed the old
+// 4 KiB cap yet still be accepted. Mirrors the TS large-message regression.
+func TestCardanoLargeMessageRoundTrip(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("ed25519 keygen: %v", err)
+	}
+	addrRaw, bech := cardanoBaseAddressInGo(t, pub)
+
+	// ~3 KiB statement → message ~3.3 KiB → COSE sig hex ~6.6 KiB (> old 4 KiB).
+	statement := ""
+	for i := 0; i < 130; i++ {
+		statement += "I authorize this login. "
+	}
+	msg, err := BuildSiwxMessage(BuildParams{
+		Challenge: LoginChallenge{
+			Domain:    "hanzo.id",
+			URI:       "https://hanzo.id/login",
+			Statement: &statement,
+			Nonce:     "adaLarge0001",
+			IssuedAt:  "2026-01-01T00:00:00.000Z",
+		},
+		Address: bech,
+		Chain:   ChainCardano,
+	})
+	if err != nil {
+		t.Fatalf("BuildSiwxMessage: %v", err)
+	}
+
+	protectedSer := cardanoEncProtectedMapTest(addrRaw)
+	payload := []byte(msg)
+	sigStruct := cborBuildSigStructure(protectedSer, []byte{}, payload)
+	sig := ed25519.Sign(priv, sigStruct)
+	coseSign1 := cardanoEncCoseSign1Test(protectedSer, payload, sig)
+
+	p := Proof{
+		Chain:     ChainCardano,
+		Scheme:    SchemeEd25519Cardano,
+		Address:   bech,
+		PublicKey: hex.EncodeToString(pub),
+		Message:   msg,
+		Signature: hex.EncodeToString(coseSign1),
+	}
+	// Sanity: the signature really exceeds the old 4 KiB cap (else test is moot).
+	if len(p.Signature) <= 4*1024 {
+		t.Fatalf("test setup: signature %d bytes, expected > 4096", len(p.Signature))
+	}
+	if !VerifyCardano(p) {
+		t.Fatal("VerifyCardano(large message) = false, want true")
+	}
+	// And the full dispatcher accepts it (with binding/time checks).
+	res := VerifyProof(p, Expectation{Domain: "hanzo.id", Nonce: "adaLarge0001", Now: mustTime(t, "2026-01-01T00:00:00.000Z")})
+	if !res.OK {
+		t.Fatalf("VerifyProof(large message) = %+v, want OK", res)
+	}
+}
+
 // --- fail-closed hardening ---
 
 func TestCardanoRejectsUnknownScheme(t *testing.T) {

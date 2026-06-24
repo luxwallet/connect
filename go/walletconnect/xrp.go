@@ -123,7 +123,12 @@ func xrpDeriveAddress(publicKey33 []byte) string {
 // address binding must pass. Fails closed on any decode error or scheme
 // mismatch — never panics. Port of src/xrp/verify.ts.
 func VerifyXrp(proof Proof) bool {
-	if len(proof.PublicKey) == 0 {
+	// Bound every attacker-controlled string before any decode/hash (DoS guard;
+	// safe when called outside the dispatcher).
+	if !withinLen(proof.PublicKey, maxPubKeyLen) || !withinLen(proof.Signature, maxSignatureLen) {
+		return false
+	}
+	if len(proof.Message) > maxMessageLen || !withinLen(proof.Address, maxAddressLen) {
 		return false
 	}
 

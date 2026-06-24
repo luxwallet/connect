@@ -25,6 +25,7 @@ import type { SignedProof } from '../types.js';
 import { base64ToBytes, utf8ToBytes, concatBytes } from '../bytes.js';
 import { encodeSegwitAddress } from './bech32.js';
 import { base58checkEncode } from './base58check.js';
+import { MAX_MESSAGE_LEN, MAX_SIGNATURE_LEN, MAX_ADDRESS_LEN, withinLen } from '../limits.js';
 
 // ── address type ──────────────────────────────────────────────────────────
 
@@ -520,6 +521,12 @@ function convert5to8(data: number[]): Uint8Array | null {
 
 export function verifyBitcoin(proof: SignedProof): boolean {
   try {
+    // Bound attacker-controlled strings before any decode/hash (DoS guard; safe
+    // when called outside the dispatcher).
+    if (!withinLen(proof.message, MAX_MESSAGE_LEN)) return false;
+    if (!withinLen(proof.signature, MAX_SIGNATURE_LEN)) return false;
+    if (!withinLen(proof.address, MAX_ADDRESS_LEN)) return false;
+
     const type = addressType(proof);
     if (type === null) return false;
 

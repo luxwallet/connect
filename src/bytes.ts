@@ -3,13 +3,27 @@ import { hexToBytes as nobleHexToBytes, bytesToHex, utf8ToBytes, concatBytes } f
 
 export { bytesToHex, utf8ToBytes, concatBytes };
 
-/** Hex → bytes, tolerant of a leading 0x. */
+/** Hex → bytes, tolerant of a leading 0x. Throws on a non-string or non-hex
+ * input (odd length, out-of-alphabet) — the noble decoder is strict, and every
+ * caller wraps the decode so the throw becomes a fail-closed `false`. */
 export function hexToBytes(hex: string): Uint8Array {
+  if (typeof hex !== 'string') throw new TypeError('hexToBytes: not a string');
   return nobleHexToBytes(hex.startsWith('0x') || hex.startsWith('0X') ? hex.slice(2) : hex);
 }
 
-/** base64 (standard, with padding) → bytes. */
+/** Strict standard base64 (with padding) → bytes. Unlike `atob` / Node's
+ * `Buffer.from(…, 'base64')` — both of which silently drop characters outside
+ * the alphabet — this rejects any non-base64 input so a malformed signature
+ * cannot be coerced into a shorter byte string. Throws on a non-string or a
+ * string that is not canonical base64; callers wrap the decode and fail closed. */
 export function base64ToBytes(b64: string): Uint8Array {
+  if (typeof b64 !== 'string') throw new TypeError('base64ToBytes: not a string');
+  // Canonical base64: groups of 4 of [A-Za-z0-9+/], optional trailing '=' pad.
+  // Reject whitespace/newlines and the URL-safe alphabet (-, _) — those are not
+  // what wallets emit, and accepting them would widen the parse surface.
+  if (b64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) {
+    throw new Error('base64ToBytes: invalid base64');
+  }
   if (typeof atob === 'function') {
     const bin = atob(b64);
     const out = new Uint8Array(bin.length);

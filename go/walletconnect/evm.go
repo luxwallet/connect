@@ -42,6 +42,11 @@ func AddressFromPublicKey(pubUncompressed []byte) string {
 // unrecoverable. Mirrors the TS recoverEvmAddress, including the 65-byte length
 // check and the 27/28-or-0/1 recovery-id normalisation.
 func RecoverEvmAddress(message, signature string) (string, bool) {
+	// Bound inputs before hashing the message / decoding the sig (DoS guard;
+	// also makes this exported helper safe when called outside the dispatcher).
+	if len(message) > maxMessageLen || len(signature) > maxSignatureLen {
+		return "", false
+	}
 	sig, err := hexToBytes(signature)
 	if err != nil {
 		return "", false
@@ -73,6 +78,9 @@ func RecoverEvmAddress(message, signature string) (string, bool) {
 // VerifyEVM reports whether signature over message was produced by address.
 // Mirrors the TS verifyEvm (case-insensitive address comparison).
 func VerifyEVM(message, signature, address string) bool {
+	if len(address) == 0 || len(address) > maxAddressLen {
+		return false
+	}
 	recovered, ok := RecoverEvmAddress(message, signature)
 	if !ok {
 		return false
